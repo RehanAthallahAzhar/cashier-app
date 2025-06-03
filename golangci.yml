@@ -1,0 +1,23 @@
+# .golangci.yml
+run:
+  issues-exit-code: 1
+  tests: false # Jangan jalankan linter pada file _test.go
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/rehanazhar/cashier-app
+  gofmt:
+    simplify: true
+
+linters:
+  disable-all: true
+  enable:
+    - gofmt
+    - goimports
+    - staticcheck
+    - unused
+    - unparam
+    - errcheck
+    - gosimple
+    - ineffassign
+    - typecheck
