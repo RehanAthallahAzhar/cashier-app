@@ -1,4 +1,4 @@
-module github.com/rehanazhar/cashier-app
+module github.com/rehanazhar/shopeezy-inventory-cart
 
 go 1.23.3
 

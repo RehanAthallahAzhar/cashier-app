@@ -8,7 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/rehanazhar/cashier-app/models"
+	"github.com/rehanazhar/shopeezy-inventory-cart/models"
 )
 
 type CartRepository struct {

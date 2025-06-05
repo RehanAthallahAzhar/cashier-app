@@ -1,6 +1,6 @@
 package handlers
 
-import "github.com/rehanazhar/cashier-app/repositories"
+import "github.com/rehanazhar/shopeezy-inventory-cart/repositories"
 
 // API struct yang akan memegang dependensi repository
 type API struct {

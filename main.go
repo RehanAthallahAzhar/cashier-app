@@ -6,11 +6,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/rehanazhar/cashier-app/databases"
-	"github.com/rehanazhar/cashier-app/handlers"
-	"github.com/rehanazhar/cashier-app/models"
-	"github.com/rehanazhar/cashier-app/repositories"
-	"github.com/rehanazhar/cashier-app/routes"
+	"github.com/rehanazhar/shopeezy-inventory-cart/databases"
+	"github.com/rehanazhar/shopeezy-inventory-cart/handlers"
+	"github.com/rehanazhar/shopeezy-inventory-cart/models"
+	"github.com/rehanazhar/shopeezy-inventory-cart/repositories"
+	"github.com/rehanazhar/shopeezy-inventory-cart/routes"
 
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	model "github.com/rehanazhar/cashier-app/models"
+	model "github.com/rehanazhar/shopeezy-inventory-cart/models"
 	"gorm.io/gorm"
 )
 

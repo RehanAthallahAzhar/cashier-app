@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/labstack/echo/v4"
-	"github.com/rehanazhar/cashier-app/models"
+	"github.com/rehanazhar/shopeezy-inventory-cart/models"
 )
 
 func (api *API) CartList() echo.HandlerFunc {
