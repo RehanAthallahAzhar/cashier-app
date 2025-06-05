@@ -13,16 +13,16 @@ func InitRoutes(e *echo.Echo, api *handlers.API) {
 	{
 		productGroup.GET("/list", api.ProductList())
 		productGroup.POST("/add", api.AddProduct)
-		productGroup.DELETE("/delete", api.DeleteProduct)
-		productGroup.PUT("/update", api.UpdateProduct)
+		productGroup.DELETE("/delete/:id", api.DeleteProduct)
+		productGroup.PUT("/update/:id", api.UpdateProduct)
 	}
 
 	cartGroup := e.Group("/cart")
 	{
 		cartGroup.GET("/list", api.CartList())
-		cartGroup.POST("/add", api.AddCart)
-		cartGroup.DELETE("/delete", api.DeleteCart)
-		cartGroup.PUT("/update", api.UpdateCart)
+		cartGroup.POST("/add/:id", api.AddCart)
+		cartGroup.DELETE("/delete/:id/item/:product_id", api.DeleteCart)
+		cartGroup.PUT("/update/:product_id", api.UpdateCart)
 		// cartGroup.GET("/:id", api.GetCartItemByID)    // coming soon
 	}
 

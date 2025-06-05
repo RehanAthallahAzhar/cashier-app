@@ -13,7 +13,7 @@ func (api *API) CartList() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ctx := c.Request().Context()
 
-		res, err := api.CartRepo.ReadCart(ctx)
+		res, err := api.CartRepo.FindAllCarts(ctx)
 		if err != nil {
 			if errors.Is(err, models.ErrProductNotFound) {
 				return c.JSON(http.StatusOK, models.SuccessResponse{Message: "Your cart is still empty, let's go shopping"})
@@ -40,16 +40,20 @@ func (api *API) AddCart(c echo.Context) error {
 		}
 	}
 
+	id := c.Param("id")
+
+	idint, _ := strconv.ParseUint(id, 10, 32)
+
 	var req models.CartRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Bad Request: Invalid JSON format"})
 	}
 
-	if req.ProductID == 0 || req.Quantity <= 0 {
+	if idint == 0 || req.Quantity <= 0 {
 		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Bad Request: Product ID and Quantity are required and must be valid."})
 	}
 
-	product, err := api.ProductRepo.ReadProductByID(ctx, req.ProductID)
+	product, err := api.ProductRepo.FindProductByID(ctx, uint(idint))
 	if err != nil {
 		if errors.Is(err, models.ErrProductNotFound) {
 			return c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Product not found!"})
@@ -80,17 +84,17 @@ func (api *API) DeleteCart(c echo.Context) error {
 		}
 	}
 
-	// Bind request
-	var req models.DeleteCartRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Bad Request: Invalid JSON format or missing data"})
-	}
+	id := c.Param("id")
+	product_id := c.Param("product_id")
 
-	if req.ProductID == 0 {
+	idInt, _ := strconv.ParseUint(id, 10, 32)
+	productIdInt, _ := strconv.ParseUint(product_id, 10, 32)
+
+	if productIdInt == 0 {
 		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Bad Request: Product ID is required."})
 	}
 
-	err := api.CartRepo.DeleteCart(ctx, uint(req.Id), uint(req.ProductID))
+	err := api.CartRepo.DeleteCart(ctx, uint(idInt), uint(productIdInt))
 
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Internal Server Error: Failed to delete product"})
@@ -109,20 +113,23 @@ func (api *API) UpdateCart(c echo.Context) error {
 		}
 	}
 
+	product_id := c.Param("product_id")
+	productIdInt, _ := strconv.ParseUint(product_id, 10, 32)
+
 	// Bind request
 	var req models.CartRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Bad Request: Invalid JSON format or missing data"})
 	}
 
-	if req.ProductID == 0 {
+	if productIdInt == 0 {
 		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Bad Request: Product ID is required."})
 	}
 	if req.Quantity < 0 { // Defense in Depth
 		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Bad Request: Quantity cannot be negative."})
 	}
 
-	err := api.CartRepo.UpdateCart(ctx, req.ProductID, req.Quantity)
+	err := api.CartRepo.UpdateCart(ctx, uint(productIdInt), req.Quantity)
 	if err != nil {
 		if errors.Is(err, models.ErrCartItemNotFound) {
 			return c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Cart item for this product not found!"})

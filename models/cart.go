@@ -20,11 +20,5 @@ type JoinCart struct {
 }
 
 type CartRequest struct {
-	ProductID uint `json:"product_id" validate:"required,min=1"`
-	Quantity  int  `json:"quantity" validate:"required,min=1"`
-}
-
-type DeleteCartRequest struct {
-	Id        uint `json:"id" validate:"required,min=1"`
-	ProductID uint `json:"product_id" validate:"required,min=1"`
+	Quantity int `json:"quantity" validate:"required,min=1"`
 }

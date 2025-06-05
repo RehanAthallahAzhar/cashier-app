@@ -3,6 +3,7 @@ package handlers // Nama package harus 'handlers'
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/labstack/echo/v4"
 	"github.com/rehanazhar/cashier-app/models"
@@ -12,7 +13,7 @@ func (api *API) ProductList() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ctx := c.Request().Context()
 
-		res, err := api.ProductRepo.ReadProducts(ctx)
+		res, err := api.ProductRepo.FindAllProducts(ctx)
 		if err != nil {
 			if errors.Is(err, models.ErrProductNotFound) {
 				return c.JSON(http.StatusNotFound, models.ErrorResponse{Error: err.Error()})
@@ -65,16 +66,27 @@ func (api *API) UpdateProduct(c echo.Context) error {
 		}
 	}
 
-	var req models.ProductRequest
-	if err := c.Bind(&req); err != nil {
+	id := c.Param("id")
+
+	idint, _ := strconv.ParseUint(id, 10, 32)
+
+	product, err := api.ProductRepo.FindProductByID(ctx, uint(idint))
+	if err != nil {
+		if errors.Is(err, models.ErrProductNotFound) {
+			return c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "User not found!"})
+		}
+		return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to retrieve user"})
+	}
+
+	if err := c.Bind(&product); err != nil {
 		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Bad Request: Invalid JSON format"})
 	}
 
-	if req.Id == 0 || req.Name == "" || req.Price <= 0 || req.Stock < 0 || req.Type == "" {
+	if product.ID == 0 || product.Name == "" || product.Price <= 0 || product.Stock < 0 || product.Type == "" {
 		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Bad Request: All required coloumn must not be empty and valid"})
 	}
 
-	err := api.ProductRepo.UpdateProduct(ctx, uint(req.Id), req)
+	err = api.ProductRepo.UpdateProduct(ctx, uint(product.ID), &product)
 	if err != nil {
 
 		if errors.Is(err, models.ErrProductNotFound) {
@@ -96,12 +108,11 @@ func (api *API) DeleteProduct(c echo.Context) error {
 		}
 	}
 
-	var req models.DeleteProduct
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Bad Request: Invalid JSON format"})
-	}
+	id := c.Param("id")
 
-	err := api.ProductRepo.DeleteProduct(ctx, uint(req.Id))
+	idint, _ := strconv.ParseUint(id, 10, 32)
+
+	err := api.ProductRepo.DeleteProduct(ctx, uint(idint))
 	if err != nil {
 		if errors.Is(err, models.ErrProductNotFound) {
 			return c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Product not found!"})

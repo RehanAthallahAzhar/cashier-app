@@ -9,7 +9,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/rehanazhar/cashier-app/models"
-	model "github.com/rehanazhar/cashier-app/models"
 )
 
 type CartRepository struct {
@@ -21,14 +20,14 @@ func NewCartRepository(db *gorm.DB, productRepo ProductRepository) CartRepositor
 	return CartRepository{db: db, ProductRepo: productRepo}
 }
 
-func (c *CartRepository) ReadCart(ctx context.Context) ([]model.JoinCart, error) {
-	var listCart []model.JoinCart
+func (c *CartRepository) FindAllCarts(ctx context.Context) ([]models.JoinCart, error) {
+	var listCart []models.JoinCart
 	err := c.db.WithContext(ctx).Table("carts").Select("carts.id, carts.product_id, products.name, carts.quantity, carts.total_price").Joins("left join products on products.id = carts.product_id").Where("carts.deleted_at is NULL").Scan(&listCart).Error
 	return listCart, err
 }
 
-func (c *CartRepository) ReadCartItemByID(ctx context.Context, cartItemID uint) (model.JoinCart, error) {
-	var cartItem model.JoinCart
+func (c *CartRepository) FindCartItemByID(ctx context.Context, cartItemID uint) (models.JoinCart, error) {
+	var cartItem models.JoinCart
 	err := c.db.WithContext(ctx).Table("carts").
 		Select("carts.id, carts.product_id, products.name, carts.quantity, carts.total_price").
 		Joins("left join products on products.id = carts.product_id").
@@ -38,20 +37,20 @@ func (c *CartRepository) ReadCartItemByID(ctx context.Context, cartItemID uint) 
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return model.JoinCart{}, models.ErrCartItemNotFound
+			return models.JoinCart{}, models.ErrCartItemNotFound
 		}
-		return model.JoinCart{}, fmt.Errorf("failed to retrieve cart item: %w", err)
+		return models.JoinCart{}, fmt.Errorf("failed to retrieve cart item: %w", err)
 	}
 
 	if cartItem.Id == 0 {
-		return model.JoinCart{}, models.ErrCartItemNotFound
+		return models.JoinCart{}, models.ErrCartItemNotFound
 	}
 
 	return cartItem, nil
 }
 
-func (c *CartRepository) AddCart(ctx context.Context, product model.Product, quantity int) error {
-	var cart model.Cart
+func (c *CartRepository) AddCart(ctx context.Context, product models.Product, quantity int) error {
+	var cart models.Cart
 
 	// Search if the item is already in the cart
 	cartExistErr := c.db.WithContext(ctx).First(&cart, "product_id = ?", product.ID).Error
@@ -62,7 +61,7 @@ func (c *CartRepository) AddCart(ctx context.Context, product model.Product, qua
 		if cartExistErr == gorm.ErrRecordNotFound {
 			totalPriceForNewItem := product.Price * float64(quantity) * (1 - (product.Discount / 100))
 
-			var newCart = &model.Cart{
+			var newCart = &models.Cart{
 				ProductID:  product.ID,
 				Quantity:   float64(quantity),
 				TotalPrice: totalPriceForNewItem,
@@ -81,7 +80,7 @@ func (c *CartRepository) AddCart(ctx context.Context, product model.Product, qua
 			totalPriceForAddedItems := product.Price * float64(quantity) * (1 - (product.Discount / 100))
 
 			// Update cart quantity and total price
-			err := tx.WithContext(ctx).Model(&model.Cart{}).Where("product_id = ?", product.ID).
+			err := tx.WithContext(ctx).Model(&models.Cart{}).Where("product_id = ?", product.ID).
 				Updates(map[string]interface{}{
 					"quantity":    gorm.Expr("quantity + ?", quantity),
 					"total_price": gorm.Expr("total_price + ?", totalPriceForAddedItems),
@@ -93,7 +92,7 @@ func (c *CartRepository) AddCart(ctx context.Context, product model.Product, qua
 
 		// Reduce product stock in the products table
 		// Use gorm.Expr for safe arithmetic operations
-		err := tx.WithContext(ctx).Model(&model.Product{}).Where("id = ?", product.ID).Update("stock", gorm.Expr("stock - ?", quantity)).Error
+		err := tx.WithContext(ctx).Model(&models.Product{}).Where("id = ?", product.ID).Update("stock", gorm.Expr("stock - ?", quantity)).Error
 		if err != nil {
 			return err // Rollback
 		}
@@ -103,7 +102,7 @@ func (c *CartRepository) AddCart(ctx context.Context, product model.Product, qua
 }
 
 func (c *CartRepository) deleteCartItemInTransaction(ctx context.Context, tx *gorm.DB, cartItemID uint, productID uint) error {
-	var slctedCart model.Cart
+	var slctedCart models.Cart
 	err := tx.WithContext(ctx).Table("carts").Select("*").Where("id = ?", cartItemID).Where("product_id = ?", productID).Scan(&slctedCart).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -112,7 +111,7 @@ func (c *CartRepository) deleteCartItemInTransaction(ctx context.Context, tx *go
 		return err
 	}
 
-	var slctedProduct model.Product
+	var slctedProduct models.Product
 	err = tx.WithContext(ctx).Table("products").Select("*").Where("id = ?", productID).Scan(&slctedProduct).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -129,7 +128,7 @@ func (c *CartRepository) deleteCartItemInTransaction(ctx context.Context, tx *go
 	}
 
 	// Hapus item dari keranjang
-	result := tx.WithContext(ctx).Table("carts").Where("id = ?", cartItemID).Delete(&model.Cart{})
+	result := tx.WithContext(ctx).Table("carts").Where("id = ?", cartItemID).Delete(&models.Cart{})
 	if result.Error != nil {
 		return result.Error
 	}
@@ -153,7 +152,7 @@ func (c *CartRepository) UpdateCart(ctx context.Context, productID uint, newQuan
 	}
 
 	return c.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var existingCartItem model.Cart
+		var existingCartItem models.Cart
 		err := tx.First(&existingCartItem, "product_id = ?", productID).Error
 		if err != nil {
 			// if cart not found
@@ -168,8 +167,8 @@ func (c *CartRepository) UpdateCart(ctx context.Context, productID uint, newQuan
 			return c.deleteCartItemInTransaction(ctx, tx, existingCartItem.ID, existingCartItem.ProductID)
 		}
 
-		var product model.Product
-		product, err = c.ProductRepo.ReadProductByID(ctx, existingCartItem.ProductID)
+		var product models.Product
+		product, err = c.ProductRepo.FindProductByID(ctx, existingCartItem.ProductID)
 		if err != nil {
 			return fmt.Errorf("failed to retrieve associated product details: %w", err)
 		}
@@ -184,7 +183,7 @@ func (c *CartRepository) UpdateCart(ctx context.Context, productID uint, newQuan
 			}
 		}
 
-		err = tx.Model(&model.Product{}).Where("id = ?", product.ID).
+		err = tx.Model(&models.Product{}).Where("id = ?", product.ID).
 			Update("stock", gorm.Expr("stock - ?", quantityChange)).Error
 		if err != nil {
 			return fmt.Errorf("failed to update product stock: %w", err)
@@ -194,7 +193,7 @@ func (c *CartRepository) UpdateCart(ctx context.Context, productID uint, newQuan
 		newTotalPrice := product.Price * float64(newQuantity) * (1 - (product.Discount / 100))
 
 		// 6. Perbarui item keranjang (kuantitas dan total harga)
-		err = tx.Model(&model.Cart{}).Where("id = ?", existingCartItem.ID). // Update berdasarkan ID item keranjang yang ditemukan
+		err = tx.Model(&models.Cart{}).Where("id = ?", existingCartItem.ID). // Update berdasarkan ID item keranjang yang ditemukan
 											Updates(map[string]interface{}{
 				"quantity":    float64(newQuantity),
 				"total_price": newTotalPrice,

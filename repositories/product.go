@@ -17,7 +17,7 @@ func NewProductRepository(db *gorm.DB) ProductRepository {
 	return ProductRepository{db}
 }
 
-func (p *ProductRepository) ReadProducts(ctx context.Context) ([]model.Product, error) {
+func (p *ProductRepository) FindAllProducts(ctx context.Context) ([]model.Product, error) {
 	results := []model.Product{}
 	err := p.db.WithContext(ctx).Table("products").Select("*").Where("deleted_at is null").Find(&results).Error
 	if err != nil {
@@ -26,7 +26,7 @@ func (p *ProductRepository) ReadProducts(ctx context.Context) ([]model.Product, 
 	return results, nil
 }
 
-func (p *ProductRepository) ReadProductByID(ctx context.Context, id uint) (model.Product, error) {
+func (p *ProductRepository) FindProductByID(ctx context.Context, id uint) (model.Product, error) {
 	var product model.Product
 	result := p.db.WithContext(ctx).First(&product, id)
 	if result.Error != nil {
@@ -45,7 +45,7 @@ func (p *ProductRepository) AddProduct(ctx context.Context, product model.Produc
 	return nil
 }
 
-func (p *ProductRepository) UpdateProduct(ctx context.Context, id uint, product model.ProductRequest) error {
+func (p *ProductRepository) UpdateProduct(ctx context.Context, id uint, product *model.Product) error {
 	err := p.db.WithContext(ctx).Table("products").Where("id = ?", id).Updates(&product).Error
 	if err != nil {
 		return err
