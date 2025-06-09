@@ -6,7 +6,8 @@ import (
 
 type Cart struct {
 	gorm.Model
-	ProductID  uint    `json:"product_id"`
+	ProductID  string  `json:"product_id"`
+	UserID     string  `json:"user_id"`
 	Quantity   float64 `json:"quantity"`
 	TotalPrice float64 `json:"total_price"`
 }

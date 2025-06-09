@@ -5,20 +5,23 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/helpers"
+	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/models"
 	"github.com/labstack/echo/v4"
-	"github.com/rehanazhar/shopeezy-inventory-cart/models"
 )
 
 func (api *API) CartList() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ctx := c.Request().Context()
 
-		res, err := api.CartRepo.FindAllCarts(ctx)
+		userId := c.Get("userID").(string)
+
+		res, err := api.CartRepo.FindAllCarts(ctx, userId)
 		if err != nil {
 			if errors.Is(err, models.ErrProductNotFound) {
 				return c.JSON(http.StatusOK, models.SuccessResponse{Message: "Your cart is still empty, let's go shopping"})
 			}
-			return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Internal Server Error: Failed to retrieve products"})
+			return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to retrieve products"})
 		}
 
 		if len(res) == 0 {
@@ -40,25 +43,26 @@ func (api *API) AddCart(c echo.Context) error {
 		}
 	}
 
-	id := c.Param("id")
+	product_id := c.Param("product_id")
 
-	idint, _ := strconv.ParseUint(id, 10, 32)
+	userId := c.Get("userID").(string)
+	newCartId := helpers.GenerateNewUserID()
 
 	var req models.CartRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Bad Request: Invalid JSON format"})
+		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Invalid JSON format"})
 	}
 
-	if idint == 0 || req.Quantity <= 0 {
-		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Bad Request: Product ID and Quantity are required and must be valid."})
+	if product_id == "" || req.Quantity <= 0 {
+		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Product ID and Quantity are required and must be valid."})
 	}
 
-	product, err := api.ProductRepo.FindProductByID(ctx, uint(idint))
+	product, err := api.ProductRepo.FindProductByID(ctx, product_id)
 	if err != nil {
 		if errors.Is(err, models.ErrProductNotFound) {
 			return c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Product not found!"})
 		}
-		return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Internal Server Error: Failed to retrieve product details."})
+		return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to retrieve product details."})
 	}
 
 	// validation of available stock
@@ -66,9 +70,9 @@ func (api *API) AddCart(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Insufficient stock: Only " + strconv.Itoa(product.Stock) + " items available."})
 	}
 
-	err = api.CartRepo.AddCart(ctx, product, req.Quantity)
+	err = api.CartRepo.AddCart(ctx, product, req.Quantity, newCartId, userId)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Internal Server Error: Failed to add product to cart."})
+		return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to add product to cart."})
 	}
 
 	return c.JSON(http.StatusOK, models.SuccessResponse{Username: username, Message: "Product Successfully Added to Cart!"})
@@ -88,16 +92,15 @@ func (api *API) DeleteCart(c echo.Context) error {
 	product_id := c.Param("product_id")
 
 	idInt, _ := strconv.ParseUint(id, 10, 32)
-	productIdInt, _ := strconv.ParseUint(product_id, 10, 32)
 
-	if productIdInt == 0 {
-		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Bad Request: Product ID is required."})
+	if product_id == "" {
+		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Product ID is required."})
 	}
 
-	err := api.CartRepo.DeleteCart(ctx, uint(idInt), uint(productIdInt))
+	err := api.CartRepo.DeleteCart(ctx, uint(idInt), product_id)
 
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Internal Server Error: Failed to delete product"})
+		return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to delete product"})
 	}
 
 	return c.JSON(http.StatusOK, models.SuccessResponse{Username: username, Message: "Product Successfully Delete to Cart!"})
@@ -114,22 +117,21 @@ func (api *API) UpdateCart(c echo.Context) error {
 	}
 
 	product_id := c.Param("product_id")
-	productIdInt, _ := strconv.ParseUint(product_id, 10, 32)
 
 	// Bind request
 	var req models.CartRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Bad Request: Invalid JSON format or missing data"})
+		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Invalid JSON format or missing data"})
 	}
 
-	if productIdInt == 0 {
-		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Bad Request: Product ID is required."})
+	if product_id == "" {
+		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Product ID is required."})
 	}
 	if req.Quantity < 0 { // Defense in Depth
-		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Bad Request: Quantity cannot be negative."})
+		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Quantity cannot be negative."})
 	}
 
-	err := api.CartRepo.UpdateCart(ctx, uint(productIdInt), req.Quantity)
+	err := api.CartRepo.UpdateCart(ctx, product_id, req.Quantity)
 	if err != nil {
 		if errors.Is(err, models.ErrCartItemNotFound) {
 			return c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Cart item for this product not found!"})
@@ -137,7 +139,7 @@ func (api *API) UpdateCart(c echo.Context) error {
 		if errors.Is(err, models.ErrInsufficientStock) {
 			return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
 		}
-		return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Internal Server Error: Failed to update cart item."})
+		return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to update cart item."})
 	}
 
 	return c.JSON(http.StatusOK, models.SuccessResponse{Username: username, Message: "Cart item updated successfully!"})

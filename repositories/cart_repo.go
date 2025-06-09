@@ -8,7 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/rehanazhar/shopeezy-inventory-cart/models"
+	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/models"
 )
 
 type CartRepository struct {
@@ -20,9 +20,13 @@ func NewCartRepository(db *gorm.DB, productRepo ProductRepository) CartRepositor
 	return CartRepository{db: db, ProductRepo: productRepo}
 }
 
-func (c *CartRepository) FindAllCarts(ctx context.Context) ([]models.JoinCart, error) {
+func (c *CartRepository) FindAllCarts(ctx context.Context, id string) ([]models.JoinCart, error) {
 	var listCart []models.JoinCart
-	err := c.db.WithContext(ctx).Table("carts").Select("carts.id, carts.product_id, products.name, carts.quantity, carts.total_price").Joins("left join products on products.id = carts.product_id").Where("carts.deleted_at is NULL").Scan(&listCart).Error
+	err := c.db.WithContext(ctx).Table("carts").
+		Select("carts.id, carts.product_id, products.name, carts.quantity, carts.total_price").
+		Joins("left join products on products.id = carts.product_id").Where("carts.deleted_at is NULL AND user_id = ?", id).
+		Scan(&listCart).Error
+
 	return listCart, err
 }
 
@@ -49,7 +53,7 @@ func (c *CartRepository) FindCartItemByID(ctx context.Context, cartItemID uint) 
 	return cartItem, nil
 }
 
-func (c *CartRepository) AddCart(ctx context.Context, product models.Product, quantity int) error {
+func (c *CartRepository) AddCart(ctx context.Context, product models.Product, quantity int, newCartId string, userId string) error {
 	var cart models.Cart
 
 	// Search if the item is already in the cart
@@ -62,7 +66,8 @@ func (c *CartRepository) AddCart(ctx context.Context, product models.Product, qu
 			totalPriceForNewItem := product.Price * float64(quantity) * (1 - (product.Discount / 100))
 
 			var newCart = &models.Cart{
-				ProductID:  product.ID,
+				ProductID:  newCartId,
+				UserID:     userId,
 				Quantity:   float64(quantity),
 				TotalPrice: totalPriceForNewItem,
 			}
@@ -101,7 +106,7 @@ func (c *CartRepository) AddCart(ctx context.Context, product models.Product, qu
 	})
 }
 
-func (c *CartRepository) deleteCartItemInTransaction(ctx context.Context, tx *gorm.DB, cartItemID uint, productID uint) error {
+func (c *CartRepository) deleteCartItemInTransaction(ctx context.Context, tx *gorm.DB, cartItemID uint, productID string) error {
 	var slctedCart models.Cart
 	err := tx.WithContext(ctx).Table("carts").Select("*").Where("id = ?", cartItemID).Where("product_id = ?", productID).Scan(&slctedCart).Error
 	if err != nil {
@@ -116,7 +121,7 @@ func (c *CartRepository) deleteCartItemInTransaction(ctx context.Context, tx *go
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// Log warning atau info di sini jika produk tidak ditemukan tapi tetap hapus item keranjang
-			log.Printf("WARNING: Product with ID %d associated with cart item %d not found in products table. Proceeding with cart item deletion.", productID, cartItemID)
+			log.Printf("WARNING: Product with ID %s associated with cart item %d not found in products table. Proceeding with cart item deletion.", productID, cartItemID)
 		}
 		return err // Tetap kembalikan error jika gagal mengambil produk (selain not found)
 	}
@@ -140,13 +145,13 @@ func (c *CartRepository) deleteCartItemInTransaction(ctx context.Context, tx *go
 }
 
 // Internal helper function to delete cart items in transactions
-func (c *CartRepository) DeleteCart(ctx context.Context, cartItemID uint, productID uint) error {
+func (c *CartRepository) DeleteCart(ctx context.Context, cartItemID uint, productID string) error {
 	return c.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return c.deleteCartItemInTransaction(ctx, tx, cartItemID, productID)
 	})
 }
 
-func (c *CartRepository) UpdateCart(ctx context.Context, productID uint, newQuantity int) error {
+func (c *CartRepository) UpdateCart(ctx context.Context, productID string, newQuantity int) error {
 	if newQuantity < 0 {
 		return errors.New("new quantity cannot be negative")
 	}

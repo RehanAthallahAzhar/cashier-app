@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time" // Import time for PingContext
 
-	model "github.com/rehanazhar/shopeezy-inventory-cart/models"
+	model "github.com/RehanAthallahAzhar/shopeezy-inventory-cart/models"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"

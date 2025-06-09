@@ -2,22 +2,26 @@ package main
 
 import (
 	"context"
+	"log"
 	"os"
 	"strconv"
 	"time"
 
-	"github.com/rehanazhar/shopeezy-inventory-cart/databases"
-	"github.com/rehanazhar/shopeezy-inventory-cart/handlers"
-	"github.com/rehanazhar/shopeezy-inventory-cart/models"
-	"github.com/rehanazhar/shopeezy-inventory-cart/repositories"
-	"github.com/rehanazhar/shopeezy-inventory-cart/routes"
-
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
+
+	// Sesuaikan import path ini dengan module name Anda
+	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/databases" // Ini mungkin perlu disesuaikan jika nama repo berubah
+	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/handlers"
+	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/middlewares"
+	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/models"
+	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/repositories"
+	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/routes"
+
+	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/pkg/authclient" // Impor authclient
 )
 
 func main() {
-	// Muat variabel lingkungan dari file .env
 	err := godotenv.Load()
 	if err != nil {
 		panic("Error loading .env file: " + err.Error())
@@ -35,39 +39,48 @@ func main() {
 		Password:     os.Getenv("DB_PASSWORD"),
 		DatabaseName: os.Getenv("DB_NAME"),
 		Port:         port,
-		// Schema:       os.Getenv("DB_SCHEMA"),
 	}
 
-	dbInstance := databases.NewDB() // Mengganti nama variabel 'db' agar tidak bentrok dengan package 'db'
+	dbInstance := databases.NewDB()
 
-	// Buat context dengan timeout untuk koneksi database
-	// Ini akan membatalkan upaya koneksi jika melebihi 10 detik
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel() // Pastikan cancel dipanggil untuk membersihkan resource context
+	defer cancel()
 
-	// Teruskan context ke fungsi Connect
-	conn, err := dbInstance.Connect(ctx, &dbCredential) // <--- PERUBAHAN DI SINI
+	conn, err := dbInstance.Connect(ctx, &dbCredential)
 	if err != nil {
 		panic("Failed to connect to database: " + err.Error())
 	}
 
-	err = conn.AutoMigrate(&models.Product{}, &models.Cart{}) // &models.User{}, &models.Session{},
+	err = conn.AutoMigrate(&models.Product{}, &models.Cart{})
 	if err != nil {
 		panic("Failed migrate to database: " + err.Error())
 	}
 
 	e := echo.New()
 
-	// usersRepo := repositories.NewUserRepository(conn)
-	// sessionsRepo := repositories.NewSessionsRepository(conn)
+	// --- Inisialisasi Klien gRPC ---
+	// --- Initialize gRPC AuthClient ---
+	grpcServerAddress := "localhost:50051"
+	authClient, err := authclient.NewAuthClient(grpcServerAddress)
+	if err != nil {
+		log.Fatalf("Failed to create auth gRPC client: %v", err)
+	}
+	defer authClient.Close()
+
+	// --- Initialize Repositories ---
 	productsRepo := repositories.NewProductRepository(conn)
-	cartsRepo := repositories.NewCartRepository(conn, productsRepo)
+	cartsRepo := repositories.NewCartRepository(conn, productsRepo) // Pastikan CartRepository Anda ada
 
-	handler := handlers.NewHandler(productsRepo, cartsRepo) // usersRepo, sessionsRepo coming soon
+	// --- Initialize Handlers ---
+	// KOREKSI: Teruskan repositories secara langsung ke handler
+	handler := handlers.NewHandler(productsRepo, cartsRepo, authClient)
 
-	// Inisialisasi rute
-	routes.InitRoutes(e, handler)
+	// --- Initialize Routes with Middleware ---
+	authMiddlewareOpts := middlewares.AuthMiddlewareOptions{
+		AuthClient: authClient,
+	}
+	routes.InitRoutes(e, handler, authMiddlewareOpts) // KOREKSI: Pemanggilan fungsi sekarang sudah benar
 
-	// Jalankan server Echo
-	e.Logger.Fatal(e.Start(":1323"))
+	echoPort := ":1323"
+	e.Logger.Fatal(e.Start(echoPort))
 }
