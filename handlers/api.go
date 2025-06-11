@@ -3,31 +3,25 @@ package handlers
 import (
 	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/pkg/authclient"
 	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/repositories"
+	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/services"
 )
 
-// API struct yang akan memegang dependensi repository
+// API struct untuk mengelola handler dan dependensinya.
 type API struct {
-	// UserRepo    repositories.UserRepository
-	// SessionRepo repositories.SessionsRepository
 	ProductRepo repositories.ProductRepository
-	CartRepo    repositories.CartRepository
+	CartRepo    repositories.CartRepository // Tetap butuh ini untuk NewHandler
 	AuthClient  *authclient.AuthClient
+	ProductSvc  services.ProductService
+	CartSvc     services.CartService // <-- TAMBAHKAN INI!
 }
 
-// NewHandler adalah konstruktor untuk API
-// Perbarui agar menerima semua repository
-func NewHandler(
-	// userRepo repositories.UserRepository,
-	// sessionRepo repositories.SessionsRepository,
-	productRepo repositories.ProductRepository,
-	cartRepo repositories.CartRepository,
-	authClient *authclient.AuthClient,
-) *API {
+// NewHandler membuat instance baru dari API.
+func NewHandler(productRepo repositories.ProductRepository, cartRepo repositories.CartRepository, authClient *authclient.AuthClient, productSvc services.ProductService, cartSvc services.CartService) *API { // <-- SESUAIKAN SIGNATURE
 	return &API{
-		// UserRepo:    userRepo,
-		// SessionRepo: sessionRepo,
 		ProductRepo: productRepo,
 		CartRepo:    cartRepo,
 		AuthClient:  authClient,
+		ProductSvc:  productSvc,
+		CartSvc:     cartSvc, // <-- INISIALISASI INI!
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/models"
 	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/repositories"
 	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/routes"
+	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/services"
 
 	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/pkg/authclient" // Impor authclient
 )
@@ -27,8 +28,8 @@ func main() {
 		panic("Error loading .env file: " + err.Error())
 	}
 
-	portStr := os.Getenv("DB_PORT")
-	port, err := strconv.Atoi(portStr)
+	dbPortStr := os.Getenv("DB_PORT")
+	port, err := strconv.Atoi(dbPortStr)
 	if err != nil {
 		panic("Invalid DB_PORT in .env file or not set: " + err.Error())
 	}
@@ -58,28 +59,34 @@ func main() {
 
 	e := echo.New()
 
-	// --- Inisialisasi Klien gRPC ---
+	// e.Use(middlewares.Logger())
+	// e.Use(middlewares.Recover())
+
 	// --- Initialize gRPC AuthClient ---
-	grpcServerAddress := "localhost:50051"
+	grpcServerAddress := "localhost:50051" // Address of your account-app gRPC server
 	authClient, err := authclient.NewAuthClient(grpcServerAddress)
 	if err != nil {
 		log.Fatalf("Failed to create auth gRPC client: %v", err)
 	}
-	defer authClient.Close()
+	defer authClient.Close() // Pastikan koneksi gRPC ditutup saat aplikasi mati
 
 	// --- Initialize Repositories ---
 	productsRepo := repositories.NewProductRepository(conn)
 	cartsRepo := repositories.NewCartRepository(conn, productsRepo) // Pastikan CartRepository Anda ada
 
+	// --- Initialize Services ---
+	productService := services.NewProductService(productsRepo)      // <-- INISIALISASI PRODUCT SERVICE
+	cartService := services.NewCartService(cartsRepo, productsRepo) // Pastikan Anda memiliki CartService
+
 	// --- Initialize Handlers ---
-	// KOREKSI: Teruskan repositories secara langsung ke handler
-	handler := handlers.NewHandler(productsRepo, cartsRepo, authClient)
+	// Teruskan repositories, authClient, dan services ke handler
+	handler := handlers.NewHandler(productsRepo, cartsRepo, authClient, productService, cartService) // <-- SESUAIKAN SIGNATURE
 
 	// --- Initialize Routes with Middleware ---
 	authMiddlewareOpts := middlewares.AuthMiddlewareOptions{
 		AuthClient: authClient,
 	}
-	routes.InitRoutes(e, handler, authMiddlewareOpts) // KOREKSI: Pemanggilan fungsi sekarang sudah benar
+	routes.InitRoutes(e, handler, authMiddlewareOpts)
 
 	echoPort := ":1323"
 	e.Logger.Fatal(e.Start(echoPort))

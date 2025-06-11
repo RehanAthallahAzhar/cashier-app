@@ -1,11 +1,13 @@
-package handlers // Nama package harus 'handlers'
+package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/helpers"
 	"github.com/RehanAthallahAzhar/shopeezy-inventory-cart/models"
+
 	"github.com/labstack/echo/v4"
 )
 
@@ -13,16 +15,16 @@ func (api *API) ProductList() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ctx := c.Request().Context()
 
-		res, err := api.ProductRepo.FindAllProducts(ctx)
+		c.Logger().Infof("Received request for product list from IP: %s", c.RealIP())
+
+		res, err := api.ProductSvc.FindAllProducts(ctx)
 		if err != nil {
 			if errors.Is(err, models.ErrProductNotFound) {
+
 				return c.JSON(http.StatusNotFound, models.ErrorResponse{Error: err.Error()})
 			}
-			return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to retrieve products"})
-		}
 
-		if len(res) == 0 {
-			return c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Product list not found!"})
+			return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to retrieve products"})
 		}
 
 		return c.JSON(http.StatusOK, res)
@@ -33,18 +35,16 @@ func (api *API) SellerProductList() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ctx := c.Request().Context()
 
-		sellerId := c.Get("userID").(string)
+		sellerId := c.Get("user_id").(string)
 
-		res, err := api.ProductRepo.FindProductBySellerID(ctx, sellerId)
+		res, err := api.ProductSvc.FindProductBySellerID(ctx, sellerId)
 		if err != nil {
 			if errors.Is(err, models.ErrProductNotFound) {
+
 				return c.JSON(http.StatusNotFound, models.ErrorResponse{Error: err.Error()})
 			}
-			return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to retrieve products"})
-		}
 
-		if len(res) == 0 {
-			return c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Product list not found!"})
+			return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to retrieve products"})
 		}
 
 		return c.JSON(http.StatusOK, res)
@@ -54,23 +54,19 @@ func (api *API) SellerProductList() echo.HandlerFunc {
 func (api *API) AddProduct(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var username string
+	username := ""
 	if val := c.Get("username"); val != nil {
 		if u, ok := val.(string); ok {
 			username = u
 		}
 	}
 
-	userId := c.Get("userID").(string)
+	userID := c.Get("user_id").(string)
 
 	role, ok := c.Get("role").(string)
 	if !ok || role == "" {
-		c.Logger().Warnf("Role not found in context for user %s (ID: %s), defaulting to 'guest'", username, userId)
-		role = "guest" // Default atau handle sebagai error jika role adalah mandatory
-	}
-
-	if role == "users" || role == "guest" {
-		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Not allowed to add products"})
+		c.Logger().Warnf("Role not found in context for user %s (ID: %s), defaulting to 'guest'", username, userID)
+		role = "guest" // Default role to prevent errors
 	}
 
 	var product models.Product
@@ -78,21 +74,27 @@ func (api *API) AddProduct(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Invalid JSON format"})
 	}
 
-	product.SellerID = userId
+	product.ID = helpers.GenerateNewUserID()
 
-	newProductId := helpers.GenerateNewUserID()
-	product.ID = newProductId
-
-	if product.Name == "" || product.Price <= 0 || product.Stock <= 0 {
-		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "All required coloumn must not be empty and valid"})
-	}
-
-	err := api.ProductRepo.AddProduct(ctx, &product)
+	addedProduct, err := api.ProductSvc.AddProduct(ctx, userID, username, role, &product)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to add product"})
+		// spesific errors
+		switch err.Error() {
+		case fmt.Sprintf("role '%s' is not allowed to add products", role):
+			return c.JSON(http.StatusForbidden, models.ErrorResponse{Error: err.Error()})
+		case "all required columns must not be empty and valid":
+			return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		default:
+			c.Logger().Errorf("ProductService.AddProduct failed: %v", err)
+			return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Internal Server Error: Failed to add product"})
+		}
 	}
 
-	return c.JSON(http.StatusOK, models.SuccessResponse{Username: username, Message: "Product Added Successfully!"})
+	return c.JSON(http.StatusCreated, models.SuccessResponse{
+		Username: username,
+		Message:  "Product Added Successfully!",
+		Data:     addedProduct,
+	})
 }
 
 func (api *API) UpdateProduct(c echo.Context) error {
@@ -105,35 +107,34 @@ func (api *API) UpdateProduct(c echo.Context) error {
 		}
 	}
 
-	id := c.Param("id")
-	sellerId := c.Get("userID").(string)
+	productID := c.Param("id")
+	sellerID := c.Get("user_id").(string)
 
-	product, err := api.ProductRepo.FindProductByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, models.ErrProductNotFound) {
-			return c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "User not found!"})
-		}
-		return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to retrieve user"})
-	}
-
-	if err := c.Bind(&product); err != nil {
+	var productData models.Product
+	if err := c.Bind(&productData); err != nil {
 		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Invalid JSON format"})
 	}
 
-	if product.ID == "" || product.Name == "" || product.Price <= 0 || product.Stock < 0 || product.Type == "" {
-		return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "All required coloumn must not be empty and valid"})
-	}
-
-	err = api.ProductRepo.UpdateProduct(ctx, id, &product, sellerId)
+	updatedProduct, err := api.ProductSvc.UpdateProduct(ctx, productID, &productData, sellerID)
 	if err != nil {
+		switch {
+		case errors.Is(err, models.ErrProductNotFound):
 
-		if errors.Is(err, models.ErrProductNotFound) {
-			return c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Product not found!"})
+			return c.JSON(http.StatusNotFound, models.ErrorResponse{Error: err.Error()})
+		case err.Error() == "all required columns must not be empty and valid for update":
+
+			return c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		case err.Error() == "service: product does not belong to this seller":
+
+			return c.JSON(http.StatusForbidden, models.ErrorResponse{Error: err.Error()})
+		default:
+			c.Logger().Errorf("ProductService.UpdateProduct failed: %v", err)
+
+			return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to update product"})
 		}
-		return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to update product"})
 	}
 
-	return c.JSON(http.StatusOK, models.SuccessResponse{Username: username, Message: "Product updated successfully"})
+	return c.JSON(http.StatusOK, models.SuccessResponse{Username: username, Message: "Product updated successfully", Data: updatedProduct})
 }
 
 func (api *API) DeleteProduct(c echo.Context) error {
@@ -146,15 +147,20 @@ func (api *API) DeleteProduct(c echo.Context) error {
 		}
 	}
 
-	id := c.Param("id")
-	sellerId := c.Get("userID").(string)
+	productID := c.Param("id")
+	sellerID := c.Get("user_id")
 
-	err := api.ProductRepo.DeleteProduct(ctx, id, sellerId)
+	err := api.ProductSvc.DeleteProduct(ctx, productID, sellerID.(string))
 	if err != nil {
-		if errors.Is(err, models.ErrProductNotFound) {
-			return c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Product not found!"})
+		switch {
+		case errors.Is(err, models.ErrProductNotFound):
+			return c.JSON(http.StatusNotFound, models.ErrorResponse{Error: err.Error()})
+		case err.Error() == "service: product does not belong to this seller":
+			return c.JSON(http.StatusForbidden, models.ErrorResponse{Error: err.Error()})
+		default:
+			c.Logger().Errorf("ProductService.DeleteProduct failed: %v", err)
+			return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to delete product"})
 		}
-		return c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to delete product"})
 	}
 
 	return c.JSON(http.StatusOK, models.SuccessResponse{Username: username, Message: "Product deleted successfully"})

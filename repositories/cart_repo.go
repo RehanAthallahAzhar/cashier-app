@@ -20,44 +20,44 @@ func NewCartRepository(db *gorm.DB, productRepo ProductRepository) CartRepositor
 	return CartRepository{db: db, ProductRepo: productRepo}
 }
 
-func (c *CartRepository) FindAllCarts(ctx context.Context, id string) ([]models.JoinCart, error) {
-	var listCart []models.JoinCart
+func (c *CartRepository) FindAllCarts(ctx context.Context, id string) ([]models.CartResponse, error) {
+	var listCart []models.CartResponse
 	err := c.db.WithContext(ctx).Table("carts").
-		Select("carts.id, carts.product_id, products.name, carts.quantity, carts.total_price").
-		Joins("left join products on products.id = carts.product_id").Where("carts.deleted_at is NULL AND user_id = ?", id).
+		Select("carts.id, carts.product_id, carts.user_id, products.name, carts.quantity, carts.total_price, carts.description").
+		Joins("join products on products.id = carts.product_id").Where("carts.deleted_at is NULL AND user_id = ?", id).
 		Scan(&listCart).Error
 
 	return listCart, err
 }
 
-func (c *CartRepository) FindCartItemByID(ctx context.Context, cartItemID uint) (models.JoinCart, error) {
-	var cartItem models.JoinCart
+func (c *CartRepository) FindCartItemByID(ctx context.Context, cartItemID uint) (models.Cart, error) {
+	var cartItem models.Cart
 	err := c.db.WithContext(ctx).Table("carts").
 		Select("carts.id, carts.product_id, products.name, carts.quantity, carts.total_price").
-		Joins("left join products on products.id = carts.product_id").
+		Joins("join products on products.id = carts.product_id").
 		Where("carts.id = ?", cartItemID).
 		Where("carts.deleted_at is NULL").
 		Scan(&cartItem).Error
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return models.JoinCart{}, models.ErrCartItemNotFound
+			return models.Cart{}, models.ErrCartItemNotFound
 		}
-		return models.JoinCart{}, fmt.Errorf("failed to retrieve cart item: %w", err)
+		return models.Cart{}, fmt.Errorf("failed to retrieve cart item: %w", err)
 	}
 
-	if cartItem.Id == 0 {
-		return models.JoinCart{}, models.ErrCartItemNotFound
+	if cartItem.ID == "" {
+		return models.Cart{}, models.ErrCartItemNotFound
 	}
 
 	return cartItem, nil
 }
 
-func (c *CartRepository) AddCart(ctx context.Context, product models.Product, quantity int, newCartId string, userId string) error {
+func (c *CartRepository) AddCart(ctx context.Context, product models.Product, quantity int, desc string, product_id string, newCartId string, userId string) error {
 	var cart models.Cart
 
 	// Search if the item is already in the cart
-	cartExistErr := c.db.WithContext(ctx).First(&cart, "product_id = ?", product.ID).Error
+	cartExistErr := c.db.WithContext(ctx).First(&cart, "product_id = ?", product_id).Error
 
 	// Use transactions to ensure atomicity
 	return c.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -66,10 +66,12 @@ func (c *CartRepository) AddCart(ctx context.Context, product models.Product, qu
 			totalPriceForNewItem := product.Price * float64(quantity) * (1 - (product.Discount / 100))
 
 			var newCart = &models.Cart{
-				ProductID:  newCartId,
-				UserID:     userId,
-				Quantity:   float64(quantity),
-				TotalPrice: totalPriceForNewItem,
+				ID:          newCartId,
+				ProductID:   product_id,
+				UserID:      userId,
+				Quantity:    float64(quantity),
+				TotalPrice:  totalPriceForNewItem,
+				Description: desc,
 			}
 
 			// new cart entry
@@ -106,7 +108,7 @@ func (c *CartRepository) AddCart(ctx context.Context, product models.Product, qu
 	})
 }
 
-func (c *CartRepository) deleteCartItemInTransaction(ctx context.Context, tx *gorm.DB, cartItemID uint, productID string) error {
+func (c *CartRepository) deleteCartItemInTransaction(ctx context.Context, tx *gorm.DB, cartItemID string, productID string) error {
 	var slctedCart models.Cart
 	err := tx.WithContext(ctx).Table("carts").Select("*").Where("id = ?", cartItemID).Where("product_id = ?", productID).Scan(&slctedCart).Error
 	if err != nil {
@@ -121,7 +123,7 @@ func (c *CartRepository) deleteCartItemInTransaction(ctx context.Context, tx *go
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// Log warning atau info di sini jika produk tidak ditemukan tapi tetap hapus item keranjang
-			log.Printf("WARNING: Product with ID %s associated with cart item %d not found in products table. Proceeding with cart item deletion.", productID, cartItemID)
+			log.Printf("WARNING: Product with ID %s associated with cart item %s not found in products table. Proceeding with cart item deletion.", productID, cartItemID)
 		}
 		return err // Tetap kembalikan error jika gagal mengambil produk (selain not found)
 	}
@@ -145,26 +147,26 @@ func (c *CartRepository) deleteCartItemInTransaction(ctx context.Context, tx *go
 }
 
 // Internal helper function to delete cart items in transactions
-func (c *CartRepository) DeleteCart(ctx context.Context, cartItemID uint, productID string) error {
+func (c *CartRepository) DeleteCart(ctx context.Context, cartItemID string, productID string) error {
 	return c.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return c.deleteCartItemInTransaction(ctx, tx, cartItemID, productID)
 	})
 }
 
-func (c *CartRepository) UpdateCart(ctx context.Context, productID string, newQuantity int) error {
+func (c *CartRepository) UpdateCart(ctx context.Context, CartId string, newQuantity int) error {
 	if newQuantity < 0 {
 		return errors.New("new quantity cannot be negative")
 	}
 
 	return c.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var existingCartItem models.Cart
-		err := tx.First(&existingCartItem, "product_id = ?", productID).Error
+		err := tx.First(&existingCartItem, "id = ?", CartId).Error
 		if err != nil {
 			// if cart not found
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return models.ErrCartItemNotFound
 			}
-			return fmt.Errorf("failed to retrieve cart item by product ID: %w", err)
+			return fmt.Errorf("failed to retrieve cart item by Cart ID: %w", err)
 		}
 
 		// Jika newQuantity adalah 0, ini berarti item dihapus dari keranjang

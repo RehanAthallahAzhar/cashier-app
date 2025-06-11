@@ -8,14 +8,13 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// InitRoutes menginisialisasi semua rute API
-func InitRoutes(e *echo.Echo, api *handlers.API, authMiddlewareOpts middlewares.AuthMiddlewareOptions) { // Tambahkan authClient sebagai parameter
+// InitRoutes -> menginisialisasi semua rute API
+func InitRoutes(e *echo.Echo, api *handlers.API, authMiddlewareOpts middlewares.AuthMiddlewareOptions) {
 	// Static files
 	e.Static("/static", "template")
 
-	// Grup rute yang memerlukan autentikasi
 	productGroup := e.Group("/product")
-	productGroup.Use(middlewares.AuthMiddleware(authMiddlewareOpts)) // Terapkan middleware
+	productGroup.Use(middlewares.AuthMiddleware(authMiddlewareOpts)) // using middleware
 	{
 		productGroup.GET("/list", api.ProductList())
 		productGroup.GET("/mylist", api.SellerProductList())
@@ -25,12 +24,12 @@ func InitRoutes(e *echo.Echo, api *handlers.API, authMiddlewareOpts middlewares.
 	}
 
 	cartGroup := e.Group("/cart")
-	cartGroup.Use(middlewares.AuthMiddleware(authMiddlewareOpts)) // Terapkan middleware
+	cartGroup.Use(middlewares.AuthMiddleware(authMiddlewareOpts)) // using middleware
 	{
 		cartGroup.GET("/list", api.CartList())
 		cartGroup.POST("/add/:product_id", api.AddCart)
 		cartGroup.DELETE("/delete/:id/item/:product_id", api.DeleteCart)
-		cartGroup.PUT("/update/:product_id", api.UpdateCart)
+		cartGroup.PUT("/update/:cart_id", api.UpdateCart)
 	}
 
 }

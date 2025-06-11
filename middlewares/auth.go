@@ -46,7 +46,7 @@ func AuthMiddleware(opts AuthMiddlewareOptions) echo.MiddlewareFunc {
 			}
 
 			// Jika token valid, Anda bisa menyimpan informasi pengguna di Echo Context
-			c.Set("userID", userID)
+			c.Set("user_id", userID)
 			c.Set("username", username)
 			c.Set("role", userRole)                                                                   // Set 'role' di context
 			c.Logger().Debugf("User %s (ID: %s, Role: %s) authenticated", username, userID, userRole) // Opsional: log info user
