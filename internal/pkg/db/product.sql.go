@@ -14,6 +14,17 @@ import (
 	"github.com/lib/pq"
 )
 
+const countAllProducts = `-- name: CountAllProducts :one
+SELECT COUNT(*) FROM products WHERE deleted_at IS NULL
+`
+
+func (q *Queries) CountAllProducts(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countAllProducts)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const decreaseProductStock = `-- name: DecreaseProductStock :one
 UPDATE products
 SET
@@ -110,6 +121,67 @@ func (q *Queries) GetAllProducts(ctx context.Context) ([]GetAllProductsRow, erro
 	var items []GetAllProductsRow
 	for rows.Next() {
 		var i GetAllProductsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SellerID,
+			&i.Name,
+			&i.Price,
+			&i.Stock,
+			&i.Discount,
+			&i.Type,
+			&i.Description,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAllProductsPaginated = `-- name: GetAllProductsPaginated :many
+SELECT 
+  id, seller_id, "name", price, stock, discount, "type", "description", created_at, updated_at
+FROM products
+WHERE deleted_at IS NULL
+ORDER BY created_at DESC
+LIMIT $1 OFFSET $2
+`
+
+type GetAllProductsPaginatedParams struct {
+	Limit  int32
+	Offset int32
+}
+
+type GetAllProductsPaginatedRow struct {
+	ID          uuid.UUID
+	SellerID    uuid.UUID
+	Name        string
+	Price       int32
+	Stock       int32
+	Discount    sql.NullInt32
+	Type        sql.NullString
+	Description sql.NullString
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (q *Queries) GetAllProductsPaginated(ctx context.Context, arg GetAllProductsPaginatedParams) ([]GetAllProductsPaginatedRow, error) {
+	rows, err := q.db.QueryContext(ctx, getAllProductsPaginated, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAllProductsPaginatedRow
+	for rows.Next() {
+		var i GetAllProductsPaginatedRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.SellerID,

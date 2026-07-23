@@ -26,6 +26,7 @@ import (
 type ProductSource interface {
 	db.Product |
 		db.GetAllProductsRow |
+		db.GetAllProductsPaginatedRow |
 		db.GetProductsBySellerIDRow |
 		db.GetProductsByNameRow |
 		db.GetProductByIDRow |
@@ -36,6 +37,7 @@ type ProductSource interface {
 type ProductService interface {
 	CreateProduct(ctx context.Context, userID uuid.UUID, req *models.ProductRequest) (*entities.Product, error)
 	GetAllProducts(ctx context.Context) ([]entities.Product, error)
+	GetAllProductsPaginated(ctx context.Context, page, size int) (*models.PaginatedResponse, error)
 	GetProductsBySellerID(ctx context.Context, sellerID uuid.UUID) ([]entities.Product, error)
 	GetProductsByName(ctx context.Context, name string) ([]entities.Product, error)
 	GetProductsByType(ctx context.Context, productType string) ([]entities.Product, error)
@@ -131,6 +133,51 @@ func (s *productServiceImpl) GetAllProducts(ctx context.Context) ([]entities.Pro
 	}
 
 	return domainProduct, nil
+}
+
+func (s *productServiceImpl) GetAllProductsPaginated(ctx context.Context, page, size int) (*models.PaginatedResponse, error) {
+	cacheKey := fmt.Sprintf("all_products_page:%d:size:%d", page, size)
+
+	var cached models.PaginatedResponse
+	if val, err := s.redisClient.Client.Get(ctx, cacheKey).Result(); err == nil {
+		if err := json.Unmarshal([]byte(val), &cached); err == nil {
+			s.log.Info("Hit Cache untuk GetAllProductsPaginated")
+			return &cached, nil
+		}
+	}
+
+	total, err := s.productRepo.CountAllProducts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("service: failed to count products: %w", err)
+	}
+
+	dbProducts, err := s.productRepo.GetAllProductsPaginated(ctx, page, size)
+	if err != nil {
+		return nil, fmt.Errorf("service: failed to retrieve paginated products: %w", err)
+	}
+
+	domainProducts := toDomainProducts(dbProducts)
+	totalPages := int(total) / size
+	if int(total)%size != 0 {
+		totalPages++
+	}
+
+	resp := &models.PaginatedResponse{
+		Message: "Products retrieved successfully",
+		Data:    domainProducts,
+		Paging: models.PagingInfo{
+			Page:       page,
+			PerPage:    size,
+			TotalItems: int(total),
+			TotalPages: totalPages,
+		},
+	}
+
+	if jsonBytes, err := json.Marshal(resp); err == nil {
+		s.redisClient.Client.Set(ctx, cacheKey, jsonBytes, 3*time.Minute)
+	}
+
+	return resp, nil
 }
 
 func (s *productServiceImpl) GetProductsBySellerID(ctx context.Context, sellerID uuid.UUID) ([]entities.Product, error) {
@@ -424,7 +471,7 @@ func (s *productServiceImpl) DecreaseStock(ctx context.Context, items []*product
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback() // Rollback
+	defer tx.Rollback()
 
 	updatedProducts := make([]*entities.Product, 0, len(items))
 
@@ -433,7 +480,7 @@ func (s *productServiceImpl) DecreaseStock(ctx context.Context, items []*product
 
 		dbProduct, err := s.productRepo.DecreaseProductStock(ctx, tx, productID, item.QuantityToDecrease)
 		if err != nil {
-			return nil, fmt.Errorf("failed to process stock for product %s: %w", item.ProductId, err) // Rollback
+			return nil, fmt.Errorf("failed to process stock for product %s: %w", item.ProductId, err)
 		}
 
 		updatedProducts = append(updatedProducts, toDomainProduct(dbProduct))

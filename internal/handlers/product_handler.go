@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/labstack/echo/v4"
 	"github.com/sirupsen/logrus"
@@ -9,7 +10,7 @@ import (
 	"github.com/RehanAthallahAzhar/tokohobby-catalog/internal/entities"
 	"github.com/RehanAthallahAzhar/tokohobby-catalog/internal/helpers"
 	"github.com/RehanAthallahAzhar/tokohobby-catalog/internal/models"
-	apperrors "github.com/RehanAthallahAzhar/tokohobby-catalog/internal/pkg/errors"
+	errorsApp "github.com/RehanAthallahAzhar/tokohobby-catalog/internal/pkg/errors"
 	"github.com/RehanAthallahAzhar/tokohobby-catalog/internal/services"
 )
 
@@ -34,12 +35,12 @@ func (p *ProductHandler) CreateProduct() echo.HandlerFunc {
 
 		userID, err := getUserIDFromContext(c)
 		if err != nil {
-			return respondError(c, http.StatusUnauthorized, apperrors.ErrInvalidUserSession)
+			return respondError(c, http.StatusUnauthorized, errorsApp.ErrInvalidUserSession)
 		}
 
 		var req models.ProductRequest
 		if err := c.Bind(&req); err != nil {
-			return respondError(c, http.StatusBadRequest, apperrors.ErrInvalidRequestPayload)
+			return respondError(c, http.StatusBadRequest, errorsApp.ErrInvalidRequestPayload)
 		}
 
 		res, err := p.ProductSvc.CreateProduct(ctx, userID, &req)
@@ -55,12 +56,26 @@ func (p *ProductHandler) GetAllProducts() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ctx := c.Request().Context()
 
-		res, err := p.ProductSvc.GetAllProducts(ctx)
+		page := 0
+		size := 20
+
+		if pageStr := c.QueryParam("page"); pageStr != "" {
+			if v, err := strconv.Atoi(pageStr); err == nil && v >= 0 {
+				page = v
+			}
+		}
+		if sizeStr := c.QueryParam("size"); sizeStr != "" {
+			if v, err := strconv.Atoi(sizeStr); err == nil && v > 0 && v <= 100 {
+				size = v
+			}
+		}
+
+		res, err := p.ProductSvc.GetAllProductsPaginated(ctx, page, size)
 		if err != nil {
 			return handleGetError(c, err)
 		}
 
-		return respondSuccess(c, http.StatusOK, MsgProductRetrieved, toProductResponseList(res))
+		return c.JSON(http.StatusOK, res)
 	}
 }
 
@@ -142,12 +157,12 @@ func (p *ProductHandler) UpdateProduct() echo.HandlerFunc {
 
 		userID, err := getUserIDFromContext(c)
 		if err != nil {
-			return respondError(c, http.StatusUnauthorized, apperrors.ErrInvalidUserSession)
+			return respondError(c, http.StatusUnauthorized, errorsApp.ErrInvalidUserSession)
 		}
 
 		role, err := getRoleFromContext(c)
 		if err != nil {
-			return respondError(c, http.StatusUnauthorized, apperrors.ErrInvalidUserSession)
+			return respondError(c, http.StatusUnauthorized, errorsApp.ErrInvalidUserSession)
 		}
 
 		productID, err := getIDFromPathParam(c, "product_id")
@@ -157,7 +172,7 @@ func (p *ProductHandler) UpdateProduct() echo.HandlerFunc {
 
 		var productData models.ProductRequest
 		if err := c.Bind(&productData); err != nil {
-			return respondError(c, http.StatusBadRequest, apperrors.ErrInvalidRequestPayload)
+			return respondError(c, http.StatusBadRequest, errorsApp.ErrInvalidRequestPayload)
 		}
 
 		res, err := p.ProductSvc.UpdateProduct(ctx, &productData, productID, userID, role)
@@ -176,12 +191,12 @@ func (p *ProductHandler) DeleteProduct() echo.HandlerFunc {
 
 		sellerID, err := getUserIDFromContext(c)
 		if err != nil {
-			return respondError(c, http.StatusUnauthorized, apperrors.ErrInvalidUserSession)
+			return respondError(c, http.StatusUnauthorized, errorsApp.ErrInvalidUserSession)
 		}
 
 		role, err := getRoleFromContext(c)
 		if err != nil {
-			return respondError(c, http.StatusUnauthorized, apperrors.ErrInvalidUserSession)
+			return respondError(c, http.StatusUnauthorized, errorsApp.ErrInvalidUserSession)
 		}
 
 		productID, err := getIDFromPathParam(c, "product_id")
@@ -207,7 +222,7 @@ func (p *ProductHandler) ClearProductCaches() echo.HandlerFunc {
 			return handleOperationError(c, err)
 		}
 
-		return respondSuccess(c, http.StatusOK, apperrors.MsgProductCacheCleared, nil)
+		return respondSuccess(c, http.StatusOK, errorsApp.MsgProductCacheCleared, nil)
 	}
 }
 

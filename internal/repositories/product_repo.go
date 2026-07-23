@@ -17,6 +17,8 @@ type ProductRepository interface {
 	BeginTx(ctx context.Context) (*sql.Tx, error)
 	CreateProduct(ctx context.Context, product *db.InsertProductParams) (*db.Product, error)
 	GetAllProducts(ctx context.Context) ([]db.GetAllProductsRow, error)
+	GetAllProductsPaginated(ctx context.Context, page, size int) ([]db.GetAllProductsPaginatedRow, error)
+	CountAllProducts(ctx context.Context) (int64, error)
 	GetProductByID(ctx context.Context, id uuid.UUID) (*db.GetProductByIDRow, error)
 	GetProductByIDs(ctx context.Context, ids []uuid.UUID) ([]db.GetProductByIDsRow, error)
 	GetProductsBySellerID(ctx context.Context, sellerID uuid.UUID) ([]db.GetProductsBySellerIDRow, error)
@@ -70,6 +72,24 @@ func (r *productRepository) GetAllProducts(ctx context.Context) ([]db.GetAllProd
 	}
 
 	return rows, nil
+}
+
+func (r *productRepository) GetAllProductsPaginated(ctx context.Context, page, size int) ([]db.GetAllProductsPaginatedRow, error) {
+	offset := page * size
+	params := db.GetAllProductsPaginatedParams{
+		Limit:  int32(size),
+		Offset: int32(offset),
+	}
+	rows, err := r.q.GetAllProductsPaginated(ctx, params)
+	if err != nil {
+		r.log.WithFields(logrus.Fields{"error": err}).Error("Failed to receive paginated products from DB")
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *productRepository) CountAllProducts(ctx context.Context) (int64, error) {
+	return r.q.CountAllProducts(ctx)
 }
 
 func (r *productRepository) GetProductByID(ctx context.Context, id uuid.UUID) (*db.GetProductByIDRow, error) {

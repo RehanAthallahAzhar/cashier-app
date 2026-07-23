@@ -20,7 +20,7 @@ import (
 
 	"github.com/RehanAthallahAzhar/tokohobby-catalog/db"
 	"github.com/RehanAthallahAzhar/tokohobby-catalog/internal/configs"
-	customMiddleware "github.com/RehanAthallahAzhar/tokohobby-catalog/internal/delivery/http/middlewares"
+	middlewareApp "github.com/RehanAthallahAzhar/tokohobby-catalog/internal/delivery/http/middlewares"
 	"github.com/RehanAthallahAzhar/tokohobby-catalog/internal/delivery/http/routes"
 	grpcServerImpl "github.com/RehanAthallahAzhar/tokohobby-catalog/internal/grpc"
 	"github.com/RehanAthallahAzhar/tokohobby-catalog/internal/handlers"
@@ -104,17 +104,21 @@ func main() {
 	}
 	defer authClientGateway.Close()
 
+	// repo
 	productsRepo := repositories.NewProductRepository(conn, sqlcQueries, log)
 	cartsRepo := repositories.NewCartRepository(redisClient, log)
 	validate := validator.New()
 
+	//svc
 	productService := services.NewProductService(productsRepo, redisClient, validate, log)
 	cartService := services.NewCartService(cartsRepo, productService, redisClient, accountClientGateway, log)
 
+	// handler
 	productHandler := handlers.NewProductHandler(productService, log)
 	cartHandler := handlers.NewCartHandler(cartService, log)
 
-	authMiddleware := customMiddleware.AuthMiddleware(authClientGateway, cfg.Server.JWTSecret, cfg.Server.Audience, log)
+	// middleware
+	authMiddleware := middlewareApp.AuthMiddleware(authClientGateway, cfg.Server.JWTSecret, cfg.Server.Audience, log)
 
 	lis, err := net.Listen("tcp", ":"+cfg.Server.GRPCPort)
 	if err != nil {
@@ -135,7 +139,7 @@ func main() {
 	// Setup Echo (REST API)
 	e := echo.New()
 	e.Use(middleware.RequestID())
-	e.Use(customMiddleware.LoggingMiddleware(log))
+	e.Use(middlewareApp.LoggingMiddleware(log))
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"*"}, // Nginx will handle stricter CORS
 		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},

@@ -7,8 +7,6 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// ---- HELPERS -----
-
 func getUserIDFromContext(c echo.Context) (uuid.UUID, error) {
 	if val := c.Get("userID"); val != nil {
 		if id, ok := val.(string); ok {

@@ -104,6 +104,18 @@ SELECT
 FROM products
 WHERE "type" = $1 AND deleted_at IS NULL;
 
+-- name: GetAllProductsPaginated :many
+SELECT 
+  id, seller_id, "name", price, stock, discount, "type", "description", created_at, updated_at
+FROM products
+WHERE deleted_at IS NULL
+ORDER BY created_at DESC
+LIMIT $1 OFFSET $2;
+
+-- name: CountAllProducts :one
+SELECT COUNT(*) FROM products WHERE deleted_at IS NULL;
+
+
 -- name: UpdateProduct :one
 UPDATE products
 SET name = $2, price = $3, stock = $4, discount = $5, type = $6, description = $7, updated_at = NOW()
