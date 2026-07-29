@@ -1,8 +1,6 @@
 package configs
 
 import (
-	"os"
-
 	"github.com/caarlos0/env/v6"
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
@@ -17,11 +15,8 @@ type AppConfig struct {
 }
 
 func LoadConfig(log *logrus.Logger) (*AppConfig, error) {
-	if os.Getenv("ENV") != "production" {
-		log.Info("ENV not production")
-		if err := godotenv.Load(); err != nil {
-			log.Fatalf("Failed to load .env file: %v", err)
-		}
+	if err := godotenv.Load(); err != nil {
+		log.Warn("Failed to load .env file, reading environment variables directly.")
 	}
 	cfg := &AppConfig{}
 	if err := env.Parse(cfg); err != nil {

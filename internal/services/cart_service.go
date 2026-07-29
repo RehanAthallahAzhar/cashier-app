@@ -129,7 +129,9 @@ func (s *cartServiceImpl) GetCartItemsByUserID(ctx context.Context, userID uuid.
 			continue
 		}
 
-		sellerIDMap[productDetail.SellerID.String()] = true
+		if productDetail.SellerID != uuid.Nil {
+			sellerIDMap[productDetail.SellerID.String()] = true
+		}
 	}
 
 	var sellerIDs []string
@@ -138,9 +140,13 @@ func (s *cartServiceImpl) GetCartItemsByUserID(ctx context.Context, userID uuid.
 	}
 
 	// account
-	accountDetailMap, err := s.fetchAccountDetails(ctx, sellerIDs)
-	if err != nil {
-		return nil, err
+	accountDetailMap := make(map[string]*accountpb.User)
+	if len(sellerIDs) > 0 {
+		if details, err := s.fetchAccountDetails(ctx, sellerIDs); err == nil {
+			accountDetailMap = details
+		} else {
+			logger.WithError(err).Warn("Gagal mengambil detail penjual via gRPC, menggunakan nama penjual default.")
+		}
 	}
 
 	finalItems := make([]entities.CartItem, 0, len(itemsMap))
@@ -150,15 +156,13 @@ func (s *cartServiceImpl) GetCartItemsByUserID(ctx context.Context, userID uuid.
 			logger.WithField("product_id", productIDStr).Warn("Detail produk tidak ditemukan, item dilewati.")
 			continue
 		}
-		accountDetail, ok := accountDetailMap[productDetail.SellerID.String()]
-		if !ok {
-			logger.WithField("seller_id", productDetail.SellerID.String()).Warn("Detail penjual tidak ditemukan, item dilewati.")
-			continue
+
+		sellerName := "Penjual TokoHobby"
+		if accountDetail, ok := accountDetailMap[productDetail.SellerID.String()]; ok && accountDetail != nil && accountDetail.Name != "" {
+			sellerName = accountDetail.Name
 		}
 
 		productID, _ := uuid.Parse(productIDStr)
-		sellerName := accountDetail.Name
-
 		assembledItem := toDomainCartItem(productID, redisItem, productDetail, sellerName)
 		finalItems = append(finalItems, *assembledItem)
 	}
